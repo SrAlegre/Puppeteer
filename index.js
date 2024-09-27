@@ -5,9 +5,9 @@ const pool = require("./db"); // Importando a conexão do banco de dados
 // Lista de lojas com nome e URL
 const stores = [
   {
-    name: "Mundo Animal Lanchonete Temática - Piracicaba",
+    name: "",
     franquia_id: "48",
-    url: "https://maps.app.goo.gl/yPSuqnp6A2awenJq7",
+    url: "",
   },
   // Adicione mais lojas conforme necessário
 ];
