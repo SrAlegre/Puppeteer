@@ -5,7 +5,7 @@ const pool = require("./db"); // Importando a conexão do banco de dados
 // Lista de lojas com nome e URL
 const stores = [
   {
-    name: "",
+    name: "teste",
     franquia_id: "48",
     url: "",
   },
