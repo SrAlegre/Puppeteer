@@ -11,7 +11,7 @@ const logFormat = printf(({ level, message, timestamp }) => {
 const logger = createLogger({
   format: combine(
     colorize(), // Adiciona cores no console
-    timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }), // Adiciona timestamp
+    timestamp({ format: 'YYYY-MM-DD HH:mm' }), // Adiciona timestamp
     logFormat // Usa o formato customizado
   ),
   transports: [

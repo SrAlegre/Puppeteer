@@ -8,7 +8,7 @@ const stores = [
   {
     "name": "teste",
     "franquia_id": "48",
-    "url": "https://maps.app.goo.gl/"
+    "url": "https://maps.app.goo.gl/Loja"
   }
   // Adicione mais lojas conforme necessário
 ];
