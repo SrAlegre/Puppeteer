@@ -1,14 +1,15 @@
 const puppeteer = require("puppeteer");
 const fs = require("fs");
 const pool = require("./db"); // Importando a conexão do banco de dados
+const logger = require("./logger"); // Importa o logger configurado
 
 // Lista de lojas com nome e URL
 const stores = [
   {
-    name: "teste",
-    franquia_id: "48",
-    url: "",
-  },
+    "name": "Mundo Animal Lanchonete Temática - Piracicaba",
+    "franquia_id": "48",
+    "url": "https://maps.app.goo.gl/5jfaGQVGoKp7LAdZ6"
+  }
   // Adicione mais lojas conforme necessário
 ];
 
@@ -28,12 +29,12 @@ async function getLastInsertedPersonKey() {
 
     if (res.rows.length > 0) {
       TARGET_USER_ID = res.rows[0].key; // Atribui a key à variável global
-      console.log('Key da pessoa da última avaliação inserida:', TARGET_USER_ID);
+      logger.info('Key da pessoa da última avaliação inserida: ' + TARGET_USER_ID);
     } else {
-      console.log('Nenhuma avaliação encontrada.');
+      logger.info('Nenhuma avaliação encontrada.');
     }
   } catch (err) {
-    console.error('Erro ao buscar a key da pessoa:', err);
+    logger.error('Erro ao buscar a key da pessoa: ' + err);
   } finally {
     client.release();
   }
@@ -60,40 +61,15 @@ async function insertReviews(reviews) {
         )
       `, [review.usuario, review.key, review.franquia_id, review.nota, parseRelativeDate(review.dia_referencia), review.comentario]);
     }));
-    console.log('Avaliações inseridas com sucesso!');
+    logger.info('Avaliações inseridas com sucesso!');
   } catch (err) {
-    console.error('Erro ao inserir avaliações:', err);
+    logger.error('Erro ao inserir avaliações: ' + err);
   } finally {
     client.release();
   }
 }
 
-// Função para converter datas relativas em formato ISO
-// function parseRelativeDate(relativeDate) {
-//   const today = new Date();
-//   const dateMap = {
-//     "um dia atrás": 1,
-//     "2 dias atrás": 2,
-//     "5 dias atrás": 5,
-//     "uma semana atrás": 7,
-//     "2 semanas atrás": 14,
-//     "3 semanas atrás": 21,
-//     "um mês atrás": 30,
-//   };
-
-//   if (relativeDate in dateMap) {
-//     const days = dateMap[relativeDate];
-//     const date = new Date(today.getTime() - days * 24 * 60 * 60 * 1000);
-//     return date.toISOString().split('T')[0];
-//   } else {
-//     throw new Error(`Data relativa desconhecida: ${relativeDate}`);
-//   }
-// }
-
-
-// Atualize a função de conversão de data
-
-// Função para converter data relativa
+// Função para converter data relativa (sem alterações aqui)
 function parseRelativeDate(relativeDate) {
   const dateMap = {
    
@@ -203,129 +179,140 @@ function parseRelativeDate(relativeDate) {
   }
 }
 
-
 async function scrapeReviews(store) {
   const browser = await puppeteer.launch({ headless: false });
   const page = await browser.newPage();
-  console.log(`Acessando a loja: ${store.name}`);
+  logger.info(`Acessando a loja: ${store.name}`);
 
-  await page.goto(store.url, { waitUntil: "networkidle2" });
+  try {
+    await page.goto(store.url, { waitUntil: "networkidle2" });
 
-  await page.waitForSelector('button[aria-label="Classificar avaliações"]');
-  await page.click('button[aria-label="Classificar avaliações"]');
-  await new Promise((resolve) => setTimeout(resolve, 2000)); // Pausa de 2 segundos
-  await page.waitForSelector('div[data-index="1"]');
-  await page.click('div[data-index="1"]');
-  await new Promise((resolve) => setTimeout(resolve, 5000)); // Pausa de 5 segundos
+    await page.waitForSelector('button[aria-label="Classificar avaliações"]');
+    await page.click('button[aria-label="Classificar avaliações"]');
+    await new Promise((resolve) => setTimeout(resolve, 2000)); // Pausa de 2 segundos
+    await page.waitForSelector('div[data-index="1"]');
+    await page.click('div[data-index="1"]');
+    await new Promise((resolve) => setTimeout(resolve, 5000)); // Pausa de 5 segundos
 
-  // Função de rolagem para carregar avaliações
-  const loadMoreReviews = async () => {
-    await page.evaluate(async () => {
-      const scrollDiv = document.querySelector(
-        ".m6QErb.DxyBCb.kA9KIf.dS8AEf.XiKgde"
-      );
-      if (!scrollDiv) return;
+    const loadMoreReviews = async () => {
+      await page.evaluate(async () => {
+        const scrollDiv = document.querySelector(
+          ".m6QErb.DxyBCb.kA9KIf.dS8AEf.XiKgde"
+        );
+        if (!scrollDiv) return;
 
-      const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-      const scrollInterval = 100;
-      const scrollStep = 10000;
+        const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const scrollInterval = 100;
+        const scrollStep = 10000;
 
-      while (true) {
-        scrollDiv.scrollBy(0, scrollStep);
-        await delay(scrollInterval);
+        while (true) {
+          scrollDiv.scrollBy(0, scrollStep);
+          await delay(scrollInterval);
 
-        if (
-          scrollDiv.scrollHeight - scrollDiv.scrollTop ===
-          scrollDiv.clientHeight
-        ) {
+          if (
+            scrollDiv.scrollHeight - scrollDiv.scrollTop ===
+            scrollDiv.clientHeight
+          ) {
+            break;
+          }
+        }
+      });
+      await new Promise((resolve) => setTimeout(resolve, 5000)); // Pausa de 5 segundos
+    };
+
+    let finalReviews = [];
+    let userFound = false;
+    const seenUserIds = new Set(); 
+
+    while (!userFound) {
+      await loadMoreReviews();
+
+      const reviews = await page.evaluate(() => {
+        const reviewElements = document.querySelectorAll("div[data-review-id]");
+        const reviewsData = [];
+
+        for (const review of reviewElements) {
+          const reviewId = review.getAttribute("data-review-id");
+          const ariaLabel =
+            review
+              .querySelector("button[aria-label]")
+              ?.getAttribute("aria-label")
+              ?.replace("Foto de ", "") || "";
+          const rating =
+            review.querySelector(".kvMYJc")?.getAttribute("aria-label") || "";
+          const comment =
+            review
+              .querySelector('div[class*="MyEned"] span')
+              ?.textContent.replace(/\n/g, "")
+              .trim() || "";
+          const date =
+            review.querySelector("span.rsqaWe")?.textContent.trim() || "";
+          reviewsData.push({
+            key: reviewId,
+            usuario: ariaLabel,
+            nota: rating.replace(/estrela[s]?/i, '').trim(),
+            comentario: comment,
+            dia_referencia: date, // Alterações feitas aqui
+          });
+        }
+
+        return reviewsData;
+      });
+
+      for (const review of reviews) {
+        if (seenUserIds.has(review.key)) {
+          continue;
+        }
+        seenUserIds.add(review.key);
+
+        finalReviews.push({
+          ...review, 
+          franquia_id: store.franquia_id, 
+        });
+        console.log("confere",review.dia_referencia)
+        if (review.key === TARGET_USER_ID || review.dia_referencia==="um mês atrás") {
+          userFound = true;
           break;
         }
       }
-    });
-    await new Promise((resolve) => setTimeout(resolve, 5000)); // Pausa de 5 segundos
-  };
 
-  // Carregar avaliações até encontrar o ID do usuário alvo
-  let finalReviews = [];
-  let userFound = false;
-  const seenUserIds = new Set(); // Usar um Set para rastrear IDs já vistos
-
-  while (!userFound) {
-    await loadMoreReviews();
-
-    const reviews = await page.evaluate(() => {
-      const reviewElements = document.querySelectorAll("div[data-review-id]");
-      const reviewsData = [];
-
-      for (const review of reviewElements) {
-        const reviewId = review.getAttribute("data-review-id");
-        const ariaLabel =
-          review
-            .querySelector("button[aria-label]")
-            ?.getAttribute("aria-label")
-            ?.replace("Foto de ", "") || "";
-        const rating =
-          review.querySelector(".kvMYJc")?.getAttribute("aria-label") || "";
-        const comment =
-          review
-            .querySelector('div[class*="MyEned"] span')
-            ?.textContent.replace(/\n/g, "")
-            .trim() || "";
-        const date =
-          review.querySelector("span.rsqaWe")?.textContent.trim() || "";
-        reviewsData.push({
-          key: reviewId,
-          usuario: ariaLabel,
-          nota: rating.replace(/estrela[s]?/i, '').trim(),
-          comentario: comment,
-          dia_referencia: date, // Alterações feitas aqui
-        });
-      }
-
-      return reviewsData;
-    });
-
-    // Verificar se o ID do usuário alvo está entre as avaliações coletadas
-    for (const review of reviews) {
-      // Ignorar se o ID já foi visto
-      if (seenUserIds.has(review.key)) {
-        continue;
-      }
-      seenUserIds.add(review.key); // Adicionar o ID ao Set
-
-      finalReviews.push({
-        ...review, // Adiciona a avaliação com os novos campos
-        franquia_id: store.franquia_id, // Adiciona o franquia_id
-      });
-
-      if (review.key === TARGET_USER_ID) {
-        userFound = true;
+      if (reviews.length === 0) {
         break;
       }
     }
+
+    finalReviews.reverse();
+
+    //Gera o arquivo json para visualizar na maquina (usar como log)
+    fs.writeFileSync(
+      `${store.name.replace(/[^a-zA-Z0-9]/g, "_")}_reviews.json`,
+      JSON.stringify(finalReviews, null, 2)
+    );
+
+    logger.info(`Dados das avaliações para ${store.name} foram salvos.`);
+
+    await insertReviews(finalReviews);
+  } catch (error) {
+    logger.error(`Erro ao processar a loja ${store.name}: ${error}`);
+  } finally {
+    await browser.close();
   }
-
-  // Inverter a ordem das avaliações para inserir do último ao primeiro
-  finalReviews.reverse();
-
-  // Salvar as avaliações em um arquivo JSON
-  fs.writeFileSync(
-    `${store.name.replace(/[^a-zA-Z0-9]/g, "_")}_reviews.json`,
-    JSON.stringify(finalReviews, null, 2)
-  );
-
-  console.log(`Dados das avaliações para ${store.name} foram salvos.`);
-
-  // Inserir as avaliações no banco de dados
-  await insertReviews(finalReviews);
-
-  await browser.close();
 }
 
 (async () => {
-  await getLastInsertedPersonKey(); // Obtém a key antes de iniciar o scraping
+  try {
+    await getLastInsertedPersonKey(); 
+  } catch (error) {
+    logger.error('Erro ao obter a key da última avaliação: ' + error);
+  }
 
   for (const store of stores) {
-    await scrapeReviews(store);
+    try {
+      await scrapeReviews(store);
+    } catch (error) {
+      logger.error(`Erro inesperado ao processar a loja ${store.name}: ${error}`);
+    }
   }
+
+  await pool.end();
 })();
