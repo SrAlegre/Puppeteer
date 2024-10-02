@@ -6,9 +6,9 @@ const logger = require("./logger"); // Importa o logger configurado
 // Lista de lojas com nome e URL
 const stores = [
   {
-    "name": "Mundo Animal Lanchonete Temática - Piracicaba",
+    "name": "teste",
     "franquia_id": "48",
-    "url": "https://maps.app.goo.gl/5jfaGQVGoKp7LAdZ6"
+    "url": "https://maps.app.goo.gl/"
   }
   // Adicione mais lojas conforme necessário
 ];
